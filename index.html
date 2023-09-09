@@ -1,0 +1,228 @@
+<html>
+  <script>
+    class FakeHTMLInputElement { }
+    if (document.URL.indexOf("#breakHtml") !== -1){
+      // IDK if defining a class in here scopes to the conditional branch but this hack seems to work
+      HTMLInputElement = FakeHTMLInputElement; 
+    }
+    
+    if (document.URL.indexOf("#disableTimeout") !== -1){
+      function setTimeout(f, duration){
+        console.log("Lol nah")
+      }
+    }
+
+    let _fetch = fetch;
+    window.fetch = async function(url, options){
+      alert("Fetch Caught: " + options.body)
+    }
+    
+  </script>
+  <script>
+    let auth_server = "http://localhost"
+    class spotInput extends HTMLInputElement {
+      Thing;
+      constructor(...args) {
+        super(...args);
+        const o1 = {}, o2 = {};     // private objects
+        const privateScope = new WeakMap(); // private scope
+
+        this.Thing = function () {
+          privateScope.set(o1, {
+            pass: "",
+          });
+          privateScope.set(o2, {
+            uncovered: "",
+          });
+        };
+        this.Thing.prototype.showPrivate = function (e) {
+          let new_char = e.data;
+          let temp1 = privateScope.get(o2).uncovered;
+          if (new_char === null & e.inputType === "deleteContentBackward") {
+            temp1 = temp1.slice(0, -1);
+          } else
+            temp1 = temp1.concat(new_char);
+          privateScope.set(o2, {
+            uncovered: temp1
+          });
+          privateScope.set(o1, {
+            pass: "*".repeat(temp1.length)
+          });
+          return privateScope.get(o1).pass;
+        };
+        this.Thing.call(this);
+
+        this.addEventListener('input', (e) => {
+          this.value = this.Thing.prototype.showPrivate(e);
+        });
+
+        this.Thing.prototype.getUnmasked2 = function () {
+          // custom implementation -- DO NOT USE AS IS
+          // A possible customization of this function is to send the email, password to a server
+          // and return the response from the server
+          // Example:
+          // function (email) {
+          //     const resp = await fetch(..., body: {email: email, pw: privateScope.get(o2).uncovered})
+          //     return resp.json()
+          // }
+
+          return privateScope.get(o2).uncovered;
+        };
+
+      }
+
+      submit() {
+        let email = document.querySelector("input[type='email']").value;
+        // Login authentication for demo-only
+        fetch(auth_server, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            email: email,
+            password: this.Thing.prototype.getUnmasked2()
+          })
+        }).then(response => response.json())
+          .then(data => {
+            // custom implementation for redirection after successful login
+            if (data.status === "success") {
+              alert("Login Successful");
+            } else {
+              alert("Login Failed");
+            }
+          })
+
+        this.Thing.prototype.getUnmasked2();
+      }
+    };
+
+    customElements.define('secure-input', spotInput, {
+      extends: 'input',
+    });
+
+    // Select the node that will be observed for mutations
+    setTimeout(() => {
+      console.log("setTimout has not been hooked and is executing")
+      const securedNode = document.querySelector('[is="secure-input"]').parentNode;
+      let xyz = null;
+      // Options for the observer (which mutations to observe)
+      const config = {attributes: true, childList: true, subtree: true};
+
+      // Callback function to execute when mutations are observed
+      const callback = (mutationList, observer) => {
+        for (const mutation of mutationList) {
+          if (mutation.type === "childList") {
+            console.log("A child node has been added or removed.");
+            console.log(mutation);
+            xyz = mutation;
+            for (let remNode of xyz.removedNodes) {
+              console.log(remNode.getAttribute('is'));
+            }
+          } else if (mutation.type === "attributes") {
+            console.log(`The ${mutation.attributeName} attribute was modified.`);
+          }
+        }
+      };
+
+      // Create an observer instance linked to the callback function
+      const observer = new MutationObserver(callback);
+
+      // Start observing the target node for configured mutations
+      observer.observe(securedNode, config);
+    }, 200)
+
+
+  </script>
+
+  <body>
+
+    <p>
+      This page is an investigation and response to 'Exposing and Addressing Security Vulnerabilities in Browser Text Input Fields' (<a href="https://www.researchgate.net/publication/373551996_Exposing_and_Addressing_Security_Vulnerabilities_in_Browser_Text_Input_Fields">https://www.researchgate.net/publication/373551996_Exposing_and_Addressing_Security_Vulnerabilities_in_Browser_Text_Input_Fields</a>). 
+    </p>
+
+    <p>    I was able to bypass this with three unrelated hacks demonstrated below.
+      The whole PDF in my eyes is fundamentally unsound - once access to HTML and / or JavaScript scope are permitted, all bets are off. This, as well as the ability to access `*`'d password data has been well understood for decades, despite the use of the phrase 'alarmingly' in the article.</p>
+    
+    <p>I would anticipate there are hundreds more potential vectors. I also imagine it would be fully possible to explore the object properties and to call `getUnmasked2()` even if the object has been defined anonymously - a comparable example would be exploring an object in python with `object.__dict__`. </p>
+    
+    <p>I do not think that even if the pocs are resolved that there would not be bypasses to those resolutions, in addition to countless other workarounds (I skipped the bit about reading key events, which are blocked when an input field is active, but there's nothing stopping you using a transparent div covering all of `<body>`, acting as an event proxy, dispatching real values to underlying objects or probably a million other hacky workarounds. Unless you start removing/undefining core parts of the JavaScript API, you cannot solve it this way, and as soon as you start removing those JS components, it makes actually coding JS unusable.</p>
+      
+<p>The actual solution to not being exploited by malicious plugins is to not deploy malicious plugins. There are some 'vetted' plugins in many browser stores, and sandbox policies provide at least some assurance, but full DOM access and unvetted plugins is just asking for trouble. </p>
+ 
+<hr>
+<p>
+  Usage: Enter text into the password field. By default, the `Attempt Read` button will
+  not display entered data. The first workaround re-maps fetch() such that 'Submit'
+  button will display the data.
+</p>
+Similarly, the Bypass buttons re-configure the site such that after data is typed into the
+password field, `Attempt Read` will display the passwords.
+<hr>
+
+    <button onClick="setMode(null)">
+      Reset
+    </button><br>
+    <hr>
+    <button onClick="readData()">Attempt Read</button><br><br>
+    
+    <button onClick="setMode('disableTimeout')">
+      Bypass 0: Hook Timeout 
+    </button> - this poc doesn't work but it breaks the timeout. Impacts unclear.<br>
+    
+    <button onClick="setMode('breakHtml')">
+      Bypass 1: Break HTMLInputElement
+    </button><br>
+
+    <button onClick="replaceElement()">Bypass 2: Form Replacement</button><br>
+    
+    <hr>
+
+    <form id="myform" method="POST" action="/">
+      <input type="email" id="email" name="email" value="example@example.com"/>
+      <input type="password" is="secure-input" name="super_duper_secret"/>
+      <button onClick="submitHook()">Submit via submit()</button>
+    </form>
+    
+  </body>
+  <script>
+    function submitHook(){
+        document.querySelector("input[type='password']").submit()
+    }
+    
+    function replaceElement(){
+      if (document.location.toString().indexOf("#") != -1){
+        alert("You must reset the page to clear any other bypass modes and then re-execute this bypass")
+      }
+      
+      real = document.querySelectorAll("input[type='password']")[0].parentElement;
+      html = real.outerHTML.replace("secure-input", "lolnah")
+                 .replace("method=", "style='background-color: #f00' method=");
+      real.outerHTML = html
+      console.log("Replaced")
+      return;
+    }
+  </script>
+  <script>
+    function setMode(mode){
+      url = window.location.toString().split('#')[0];
+      if (mode != null){
+        url += "#" + mode
+        
+      }
+      window.location = url
+      if (mode != null){
+        location.reload()
+      }
+    }
+    
+    function readData(){ // Expect this to fail
+      let passwords = ""
+      for (let el of document.querySelectorAll("input[type='password']")){
+        passwords += el.value + "\n"
+      }
+
+      alert("Outcome: \n" + passwords + "\n\n fail if all values are '*****'")
+    }
+  </script>
+</html>
